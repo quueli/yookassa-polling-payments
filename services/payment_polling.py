@@ -6,6 +6,7 @@ from datetime import datetime
 from aiogram import Bot
 
 from config import settings
+from database import db_manager
 from services.order import order_service
 from services.payment import get_yookassa_payment_service
 
@@ -28,10 +29,10 @@ class YooKassaPollingService:
     def __init__(self, bot: Bot = None, payment_service=None, interval: int = None, max_attempts: int = None):
         self.bot = bot
         self.payment_service = payment_service
-        self.pending_payments = {}
+        self.pending_payments: dict[str, PendingPayment] = {}
         self.polling_interval = interval or settings.polling_interval
         self.max_check_attempts = max_attempts or settings.max_polling_attempts
-        self.pause_between_checks = 1.0
+        self.pause_between_checks = 1.0  # flat, per payment: a long queue takes minutes per pass
         self.is_running = False
         self._polling_task = None
 
@@ -58,10 +59,22 @@ class YooKassaPollingService:
         if pending:
             logger.info(f"stopped polling payment {payment_id} (order {pending.order_id})")
 
+    def restore_pending_payments(self) -> int:
+        # after a restart the queue is empty but the order rows still carry the payment ids
+        restored = 0
+        for order in db_manager.get_orders_by_status("pending"):
+            if order.payment_id and order.payment_id not in self.pending_payments:
+                self.add_payment_for_polling(order.payment_id, order.order_id, order.amount)
+                restored += 1
+        if restored:
+            logger.info(f"restored {restored} pending payments from the database")
+        return restored
+
     async def check_payment_status(self, pending_payment: PendingPayment):
         info = await self._service().get_payment_status(pending_payment.payment_id)
         if not info:
             return None
+        logger.debug(f"payment {pending_payment.payment_id}: {info['status']}")
         return info["status"]
 
     async def handle_status(self, pending_payment: PendingPayment, new_status: str) -> bool:
@@ -86,13 +99,15 @@ class YooKassaPollingService:
     async def poll_once(self):
         for pending_payment in list(self.pending_payments.values()):
             if pending_payment.check_count >= self.max_check_attempts:
-                logger.warning(f"payment {pending_payment.payment_id} still open, giving up")
+                logger.warning(f"payment {pending_payment.payment_id} still open after "
+                               f"{pending_payment.check_count} checks, giving up")
                 await order_service.cancel_unpaid(self.bot, pending_payment.order_id, "expired")
                 self.remove_payment_from_polling(pending_payment.payment_id)
                 continue
 
             status = await self.check_payment_status(pending_payment)
             if status is None:
+                # an api error is not an attempt, an outage must not burn the budget
                 continue
 
             pending_payment.last_checked = datetime.now()
@@ -125,6 +140,7 @@ class YooKassaPollingService:
             logger.warning("payment polling already running")
             return
 
+        self.restore_pending_payments()
         self.is_running = True
         self._polling_task = asyncio.create_task(self.polling_loop())
         logger.info("payment polling started")
@@ -140,6 +156,23 @@ class YooKassaPollingService:
             except asyncio.CancelledError:
                 pass
         logger.info("payment polling stopped")
+
+    def get_polling_stats(self) -> dict:
+        return {
+            "is_running": self.is_running,
+            "polling_interval": self.polling_interval,
+            "max_check_attempts": self.max_check_attempts,
+            "pending_payments": [
+                {
+                    "payment_id": p.payment_id,
+                    "order_id": p.order_id,
+                    "amount": p.amount,
+                    "created_at": p.created_at.isoformat(),
+                    "check_count": p.check_count,
+                }
+                for p in self.pending_payments.values()
+            ],
+        }
 
 
 polling_service = YooKassaPollingService()

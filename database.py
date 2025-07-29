@@ -20,6 +20,7 @@ class Order(Base):
     amount = Column(Float, nullable=False)
     status = Column(String(50), default="pending")
     payment_id = Column(String(100), nullable=True)
+    admin_message_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -74,6 +75,20 @@ class DatabaseManager:
             order.updated_at = func.now()
             db.commit()
             return True
+
+    def update_admin_message_id(self, order_id: str, message_id: int) -> bool:
+        with self.SessionLocal() as db:
+            order = db.query(Order).filter(Order.order_id == order_id).first()
+            if not order:
+                return False
+            order.admin_message_id = message_id
+            db.commit()
+            return True
+
+    def get_admin_message_id(self, order_id: str):
+        with self.SessionLocal() as db:
+            order = db.query(Order).filter(Order.order_id == order_id).first()
+            return order.admin_message_id if order else None
 
 
 db_manager = DatabaseManager()

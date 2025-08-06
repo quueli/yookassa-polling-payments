@@ -18,7 +18,7 @@ class Order(Base):
     order_id = Column(String(50), unique=True, nullable=False)
     user_id = Column(BigInteger, nullable=False)
     amount = Column(Float, nullable=False)
-    status = Column(String(50), default="pending")
+    status = Column(String(50), default="pending")  # pending, paid, canceled, expired, shipped, delivered
     payment_id = Column(String(100), nullable=True)
     admin_message_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
@@ -71,6 +71,17 @@ class DatabaseManager:
             order = db.query(Order).filter(Order.order_id == order_id).first()
             if not order:
                 return False
+            order.payment_id = payment_id
+            order.updated_at = func.now()
+            db.commit()
+            return True
+
+    def mark_paid(self, order_id: str, payment_id: str) -> bool:
+        with self.SessionLocal() as db:
+            order = db.query(Order).filter(Order.order_id == order_id).first()
+            if not order or order.status == "paid":
+                return False
+            order.status = "paid"
             order.payment_id = payment_id
             order.updated_at = func.now()
             db.commit()

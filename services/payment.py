@@ -39,7 +39,8 @@ class YooKassaPaymentService:
     def is_enabled(self) -> bool:
         return self.enabled
 
-    async def create_payment(self, order_id: str, amount: float, description: str, return_url: str):
+    async def create_payment(self, order_id: str, amount: float, description: str,
+                             return_url: str, receipt: dict = None):
         if not self.enabled:
             logger.error("online payments are disabled")
             return None
@@ -51,6 +52,9 @@ class YooKassaPaymentService:
             "description": description,
             "metadata": {"order_id": order_id},
         }
+        if receipt:
+            payment_data["receipt"] = receipt
+
         try:
             # the sdk is blocking (requests underneath), keep it off the event loop
             payment = await asyncio.to_thread(self.api.create, payment_data, str(uuid.uuid4()))
@@ -59,6 +63,9 @@ class YooKassaPaymentService:
             return None
         except ApiError as e:
             logger.error(f"yookassa api error creating payment for order {order_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"unexpected error creating payment for order {order_id}: {e}")
             return None
 
         logger.info(f"payment {payment.id} created for order {order_id}")

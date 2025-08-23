@@ -10,6 +10,8 @@ from config import settings
 
 Base = declarative_base()
 
+UNPAID_STATUSES = ("pending", "canceled", "expired")
+
 
 class Order(Base):
     __tablename__ = "orders"
@@ -18,7 +20,7 @@ class Order(Base):
     order_id = Column(String(50), unique=True, nullable=False)
     user_id = Column(BigInteger, nullable=False)
     amount = Column(Float, nullable=False)
-    status = Column(String(50), default="pending")
+    status = Column(String(50), default="pending")  # pending, paid, canceled, expired, shipped, delivered
     payment_id = Column(String(100), nullable=True)
     admin_message_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
@@ -48,11 +50,11 @@ class DatabaseManager:
             db.refresh(order)
             return order
 
-    def get_order(self, order_id: str):
+    def get_order(self, order_id: str) -> Order | None:
         with self.SessionLocal() as db:
             return db.query(Order).filter(Order.order_id == order_id).first()
 
-    def get_orders_by_status(self, status: str):
+    def get_orders_by_status(self, status: str) -> list[Order]:
         with self.SessionLocal() as db:
             return db.query(Order).filter(Order.status == status).order_by(Order.created_at).all()
 
@@ -76,7 +78,20 @@ class DatabaseManager:
             db.commit()
             return True
 
-    def update_admin_message_id(self, order_id: str, message_id: int) -> bool:
+    def mark_paid(self, order_id: str, payment_id: str) -> bool:
+        with self.SessionLocal() as db:
+            # conditional update, not load-then-save: the poller and a webhook can race on the
+            # same payment and only one of them may come out with a row
+            updated = (
+                db.query(Order)
+                .filter(Order.order_id == order_id, Order.status.in_(UNPAID_STATUSES))
+                .update({"status": "paid", "payment_id": payment_id, "updated_at": func.now()},
+                        synchronize_session=False)
+            )
+            db.commit()
+            return updated == 1
+
+    def update_admin_message_id(self, order_id: str, message_id: int | None) -> bool:
         with self.SessionLocal() as db:
             order = db.query(Order).filter(Order.order_id == order_id).first()
             if not order:
@@ -85,7 +100,7 @@ class DatabaseManager:
             db.commit()
             return True
 
-    def get_admin_message_id(self, order_id: str):
+    def get_admin_message_id(self, order_id: str) -> int | None:
         with self.SessionLocal() as db:
             order = db.query(Order).filter(Order.order_id == order_id).first()
             return order.admin_message_id if order else None

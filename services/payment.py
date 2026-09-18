@@ -72,7 +72,7 @@ class YooKassaPaymentService:
             return None
 
         logger.info(f"payment {payment.id} created for order {order_id}")
-        db_manager.set_payment_id(order_id, payment.id)
+        await asyncio.to_thread(db_manager.set_payment_id, order_id, payment.id)
 
         if self.use_polling:
             from services.payment_polling import polling_service

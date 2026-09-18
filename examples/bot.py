@@ -28,7 +28,7 @@ async def start(message: Message):
 
 @dp.callback_query(F.data == "pay")
 async def pay(callback: CallbackQuery):
-    order = db_manager.create_order(user_id=callback.from_user.id, amount=PRICE)
+    order = await asyncio.to_thread(db_manager.create_order, user_id=callback.from_user.id, amount=PRICE)
     me = await callback.bot.get_me()
     payment = await get_yookassa_payment_service().create_payment(
         order_id=order.order_id,

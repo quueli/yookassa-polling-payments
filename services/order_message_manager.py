@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from aiogram import Bot
@@ -69,7 +70,7 @@ class OrderMessageManager:
             logger.error(f"failed to post order {order.order_id} to admin chat: {e}")
             return None
 
-        db_manager.update_admin_message_id(order.order_id, message.message_id)
+        await asyncio.to_thread(db_manager.update_admin_message_id, order.order_id, message.message_id)
         logger.info(f"order {order.order_id} posted to admin chat, message {message.message_id}")
         return message.message_id
 
@@ -77,7 +78,7 @@ class OrderMessageManager:
         if not self.admin_group_id:
             return False
 
-        order = db_manager.get_order(order_id)
+        order = await asyncio.to_thread(db_manager.get_order, order_id)
         if not order:
             logger.error(f"order {order_id} not found")
             return False

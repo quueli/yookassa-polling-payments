@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from aiogram import Bot
@@ -25,23 +26,24 @@ class OrderService:
             logger.error(f"failed to notify user {user_id}: {e}")
 
     async def confirm_payment(self, bot: Bot, order_id: str, payment_id: str) -> bool:
-        order = db_manager.get_order(order_id)
+        # sqlalchemy here is sync, so every call goes to a thread: a slow disk must not stall the bot
+        order = await asyncio.to_thread(db_manager.get_order, order_id)
         if not order:
             logger.error(f"order {order_id} not found for payment {payment_id}")
             return False
 
-        if not db_manager.mark_paid(order_id, payment_id):
+        if not await asyncio.to_thread(db_manager.mark_paid, order_id, payment_id):
             logger.info(f"order {order_id} is already {order.status}, payment {payment_id} ignored")
             return False
 
         logger.info(f"order {order_id} paid, payment {payment_id}")
-        order = db_manager.get_order(order_id)
+        order = await asyncio.to_thread(db_manager.get_order, order_id)
         await self._notify_user(bot, order.user_id, USER_TEXT["paid"].format(order_id=order_id))
         await order_message_manager.send_new_order_notification(bot, order)
         return True
 
     async def cancel_unpaid(self, bot: Bot, order_id: str, status: str = "canceled") -> bool:
-        order = db_manager.get_order(order_id)
+        order = await asyncio.to_thread(db_manager.get_order, order_id)
         if not order:
             logger.error(f"order {order_id} not found")
             return False
@@ -49,7 +51,7 @@ class OrderService:
             logger.info(f"order {order_id} is {order.status}, not closing it as {status}")
             return False
 
-        db_manager.update_order_status(order_id, status)
+        await asyncio.to_thread(db_manager.update_order_status, order_id, status)
         logger.info(f"order {order_id} closed as {status}")
         await self._notify_user(bot, order.user_id, USER_TEXT[status].format(order_id=order_id))
         if order.admin_message_id:
@@ -57,10 +59,10 @@ class OrderService:
         return True
 
     async def update_order_status_with_notification(self, bot: Bot, order_id: str, new_status: str) -> bool:
-        order = db_manager.get_order(order_id)
+        order = await asyncio.to_thread(db_manager.get_order, order_id)
         if not order:
             return False
-        if not db_manager.update_order_status(order_id, new_status):
+        if not await asyncio.to_thread(db_manager.update_order_status, order_id, new_status):
             return False
 
         await order_message_manager.update_order_status_message(bot, order_id, new_status)

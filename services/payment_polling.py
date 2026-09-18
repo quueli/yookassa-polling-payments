@@ -61,10 +61,10 @@ class YooKassaPollingService:
         if pending:
             logger.info(f"stopped polling payment {payment_id} (order {pending.order_id})")
 
-    def restore_pending_payments(self) -> int:
+    async def restore_pending_payments(self) -> int:
         # after a restart the queue is empty but the order rows still carry the payment ids
         restored = 0
-        for order in db_manager.get_orders_by_status("pending"):
+        for order in await asyncio.to_thread(db_manager.get_orders_by_status, "pending"):
             if order.payment_id and order.payment_id not in self.pending_payments:
                 self.add_payment_for_polling(order.payment_id, order.order_id, order.amount)
                 restored += 1
@@ -142,7 +142,7 @@ class YooKassaPollingService:
             logger.warning("payment polling already running")
             return
 
-        self.restore_pending_payments()
+        await self.restore_pending_payments()
         self.is_running = True
         self._polling_task = asyncio.create_task(self.polling_loop())
         logger.info("payment polling started")

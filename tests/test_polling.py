@@ -107,9 +107,9 @@ def test_restart_recovery(env):
 
     poller = YooKassaPollingService(bot=env.bot, payment_service=env.service, max_attempts=3)
     poller.pause_between_checks = 0
-    assert poller.restore_pending_payments() >= 1
+    assert run(poller.restore_pending_payments()) >= 1
     assert payment_id in poller.pending_payments
-    assert poller.restore_pending_payments() == 0
+    assert run(poller.restore_pending_payments()) == 0
 
     env.fake.set_status(payment_id, "succeeded")
     run(poller.poll_once())

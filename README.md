@@ -1,5 +1,7 @@
 # yookassa polling
 
+![ci](https://github.com/quueli/yookassa-polling-payments/actions/workflows/ci.yml/badge.svg)
+
 yookassa wants a public https url for payment webhooks and my bot lived on a home box behind nat. so instead of a webhook the bot just asks yookassa about every open payment every 30 seconds until it settles. thats the whole idea.
 
     pip install -r requirements.txt

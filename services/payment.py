@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from decimal import Decimal
 
 try:
     from yookassa import Configuration, Payment
@@ -11,6 +12,7 @@ except ImportError:
 
 from config import settings
 from database import db_manager
+from money import money
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +41,13 @@ class YooKassaPaymentService:
     def is_enabled(self) -> bool:
         return self.enabled
 
-    async def create_payment(self, order_id: str, amount: float, description: str,
+    async def create_payment(self, order_id: str, amount, description: str,
                              return_url: str, receipt: dict = None):
         if not self.enabled:
             logger.error("online payments are disabled")
             return None
 
+        amount = money(amount)
         payment_data = {
             "amount": {"value": f"{amount:.2f}", "currency": "RUB"},
             "confirmation": {"type": "redirect", "return_url": return_url},
@@ -78,7 +81,7 @@ class YooKassaPaymentService:
         return {
             "payment_id": payment.id,
             "status": payment.status,
-            "amount": float(payment.amount.value),
+            "amount": Decimal(payment.amount.value),
             "currency": payment.amount.currency,
             "confirmation_url": payment.confirmation.confirmation_url,
             "metadata": payment.metadata,
@@ -102,7 +105,7 @@ class YooKassaPaymentService:
             "payment_id": payment.id,
             "status": payment.status,
             "paid": payment.paid,
-            "amount": float(payment.amount.value),
+            "amount": Decimal(payment.amount.value),
             "currency": payment.amount.currency,
             "metadata": payment.metadata,
         }

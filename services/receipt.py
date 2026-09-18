@@ -1,6 +1,7 @@
 import re
 
 from config import settings
+from money import to_kop
 
 
 def normalize_phone(phone):
@@ -16,10 +17,6 @@ def normalize_phone(phone):
     return digits
 
 
-def _kop(value: float) -> int:
-    return int(round(value * 100))
-
-
 def _line(name: str, quantity: int, unit_kop: int) -> dict:
     return {
         "description": name[:128],
@@ -31,22 +28,22 @@ def _line(name: str, quantity: int, unit_kop: int) -> dict:
     }
 
 
-def build_receipt(amount: float, items: list = None, description: str = "Order",
+def build_receipt(amount, items: list = None, description: str = "Order",
                   email: str = None, phone: str = None) -> dict:
     customer = {"email": email or settings.receipt_email}
     phone = normalize_phone(phone)
     if phone:
         customer["phone"] = phone
 
-    total_kop = _kop(amount)
+    total_kop = to_kop(amount)
     lines = []
     if items:
-        subtotal_kop = sum(_kop(item["price"]) * int(item.get("quantity", 1)) for item in items)
+        subtotal_kop = sum(to_kop(item["price"]) * int(item.get("quantity", 1)) for item in items)
         # the amount may carry a delivery fee or a discount the lines know nothing about
         factor = total_kop / subtotal_kop if subtotal_kop else 1.0
         for item in items:
             quantity = int(item.get("quantity", 1))
-            lines.append([item["name"], quantity, int(round(_kop(item["price"]) * factor))])
+            lines.append([item["name"], quantity, int(round(to_kop(item["price"]) * factor))])
 
         # unit price times quantity has to hit the total to the kopeck or yookassa rejects the
         # payment, so split one unit off the last line and put the remainder there

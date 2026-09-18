@@ -2,11 +2,12 @@ import os
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Column, DateTime, Float, Integer, String, create_engine
+from sqlalchemy import BigInteger, Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
 from config import settings
+from money import from_kop, to_kop
 
 Base = declarative_base()
 
@@ -19,12 +20,16 @@ class Order(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     order_id = Column(String(50), unique=True, nullable=False)
     user_id = Column(BigInteger, nullable=False)
-    amount = Column(Float, nullable=False)
+    amount_kop = Column(Integer, nullable=False)  # money as integer kopecks, never float
     status = Column(String(50), default="pending")  # pending, paid, canceled, expired, shipped, delivered
     payment_id = Column(String(100), nullable=True)
     admin_message_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    @property
+    def amount(self):
+        return from_kop(self.amount_kop)
 
 
 class DatabaseManager:
@@ -38,12 +43,12 @@ class DatabaseManager:
     def create_tables(self):
         Base.metadata.create_all(bind=self.engine)
 
-    def create_order(self, user_id: int, amount: float) -> Order:
+    def create_order(self, user_id: int, amount) -> Order:
         with self.SessionLocal() as db:
             order = Order(
                 order_id=f"ORD-{datetime.now():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}",
                 user_id=user_id,
-                amount=round(amount, 2),
+                amount_kop=to_kop(amount),
             )
             db.add(order)
             db.commit()

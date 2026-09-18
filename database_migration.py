@@ -16,7 +16,7 @@ CREATE_ORDERS = """CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id TEXT UNIQUE NOT NULL,
     user_id INTEGER NOT NULL,
-    amount REAL NOT NULL,
+    amount_kop INTEGER NOT NULL,
     status TEXT DEFAULT 'pending',
     payment_id TEXT,
     admin_message_id INTEGER,
@@ -48,6 +48,20 @@ class DatabaseMigrator:
                 conn.execute(f"UPDATE orders SET {name} = CURRENT_TIMESTAMP WHERE {name} IS NULL")
             logger.info(f"added column orders.{name}")
 
+    def move_amount_to_kopecks(self, conn: sqlite3.Connection):
+        columns = self.get_table_columns(conn, "orders")
+        if "amount" not in columns or "amount_kop" in columns:
+            return
+        # sqlite can't drop a NOT NULL column, so the table is rebuilt and the rows copied over
+        conn.execute("ALTER TABLE orders RENAME TO orders_old")
+        conn.execute(CREATE_ORDERS)
+        conn.execute("""INSERT INTO orders (id, order_id, user_id, amount_kop, status, payment_id,
+                                            admin_message_id, created_at, updated_at)
+                        SELECT id, order_id, user_id, CAST(ROUND(amount * 100) AS INTEGER), status, payment_id,
+                               admin_message_id, created_at, updated_at FROM orders_old""")
+        conn.execute("DROP TABLE orders_old")
+        logger.info("orders.amount moved to amount_kop")
+
     def fix_status_spelling(self, conn: sqlite3.Connection):
         # early versions wrote the british spelling, the api says canceled
         fixed = conn.execute("UPDATE orders SET status = 'canceled' WHERE status = 'cancelled'").rowcount
@@ -61,6 +75,7 @@ class DatabaseMigrator:
             try:
                 conn.execute(CREATE_ORDERS)
                 self.add_missing_columns(conn)
+                self.move_amount_to_kopecks(conn)
                 self.fix_status_spelling(conn)
                 conn.commit()
             finally:

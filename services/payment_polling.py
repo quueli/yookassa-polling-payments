@@ -2,11 +2,13 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from aiogram import Bot
 
 from config import settings
 from database import db_manager
+from money import money
 from services.order import order_service
 from services.payment import get_yookassa_payment_service
 
@@ -19,7 +21,7 @@ OPEN_STATUSES = ("pending", "waiting_for_capture")
 class PendingPayment:
     payment_id: str
     order_id: str
-    amount: float
+    amount: Decimal
     created_at: datetime
     last_checked: datetime
     check_count: int = 0
@@ -41,14 +43,14 @@ class YooKassaPollingService:
             self.payment_service = get_yookassa_payment_service()
         return self.payment_service
 
-    def add_payment_for_polling(self, payment_id: str, order_id: str, amount: float):
+    def add_payment_for_polling(self, payment_id: str, order_id: str, amount):
         if payment_id in self.pending_payments:
             return
         now = datetime.now()
         self.pending_payments[payment_id] = PendingPayment(
             payment_id=payment_id,
             order_id=order_id,
-            amount=amount,
+            amount=money(amount),
             created_at=now,
             last_checked=now,
         )
@@ -166,7 +168,7 @@ class YooKassaPollingService:
                 {
                     "payment_id": p.payment_id,
                     "order_id": p.order_id,
-                    "amount": p.amount,
+                    "amount": str(p.amount),
                     "created_at": p.created_at.isoformat(),
                     "check_count": p.check_count,
                 }

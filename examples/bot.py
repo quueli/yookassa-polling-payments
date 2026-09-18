@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from decimal import Decimal
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
@@ -12,7 +13,7 @@ from services.payment import get_yookassa_payment_service
 from services.payment_polling import polling_service
 from services.receipt import build_receipt
 
-PRICE = 100.0
+PRICE = Decimal("100.00")
 
 dp = Dispatcher()
 
